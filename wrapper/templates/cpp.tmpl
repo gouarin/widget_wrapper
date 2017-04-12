@@ -1,0 +1,20 @@
+#pragma once
+{% for item in dependencies -%}
+#include <{{ item }}>
+{% endfor -%}
+
+{% for key, value in klass.items() %}
+struct {{ key }}
+{%- if value.inheritance -%}
+: public {{ value.inheritance|join(', ') }}
+{% endif -%} 
+{
+    {% for attr in value.attr -%}
+    XPROPERTY({{ attr.type }}, {{ attr.name }}, {{ key }}); 
+    {% endfor %}
+};
+{% for attr in value.attr -%}
+{{ key }}.{{ attr.name }} = {{attr.default_value | safe }}; 
+{% endfor %}
+
+{% endfor %}
