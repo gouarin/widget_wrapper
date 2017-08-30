@@ -8,7 +8,7 @@ from traitlets import (
     )
 from traittypes import Array
 
-def get_class_info(klass):
+def get_class_info(module_name, klass):
     """
     from a Python class return the name of the class as string 
     and the path.
@@ -16,8 +16,8 @@ def get_class_info(klass):
     classname = klass.__name__
     if classLink.get(classname, None):
         return classLink[classname]
-    s = klass.__module__.split('.')
-    return {'filename': '/'.join(s), 'classname': classname}
+    s = klass.__module__.replace(module_name + '.', '', 1)
+    return {'filename': s, 'classname': classname}
 
 def python2cpp_classname(klass, prefix=''):
     """
@@ -69,14 +69,18 @@ def get_enum_value(v):
         return v.values
     return None
 
-def get_trait(type_name, traits2lang):
+def get_trait(type_name, traits2lang, own_classes):
+    if own_classes.get(type_name, None):
+        return 'xw::xholder<x{}>'.format(own_classes[type_name])
     trait = traits2lang.get(type_name, None)
     if isinstance(trait, dict):
         return trait['type']
     else:
         return trait
 
-def get_dep(type_name, traits2lang):
+def get_dep(type_name, traits2lang, own_classes):
+    if own_classes.get(type_name, None):
+        return own_classes[type_name] + '.hpp'
     trait = traits2lang.get(type_name, None)
     if isinstance(trait, dict):
         return trait.get('include', None)
@@ -94,14 +98,15 @@ class wrapper:
         self.prefix = '.hpp'
         self.output = None
         self.file2wrap = None
+        self.module = module
 
         self.namespace = namespace
         self.package_name = package_name
 
-        self.inspect_module(module)
+        self.inspect_module()
         self.build_output(traits2lang)
 
-    def inspect_module(self, module):
+    def inspect_module(self):
         """
         inspect the module to wrap.
 
@@ -113,14 +118,14 @@ class wrapper:
                   }
         """
 
-        mod = __import__(module)
+        mod = __import__(self.module)
         self.file2wrap = OrderedDict()
         for d in dir(mod):
             component = eval('mod.' + d)
             if inspect.isclass(component):
                 # check if component is in the module
-                if component.__module__.split('.')[0] == module:
-                    info = get_class_info(component)
+                if component.__module__.split('.')[0] == self.module:
+                    info = get_class_info(self.module, component)
                     # check the traits types for this class
                     if getattr(component, 'class_own_traits', None):
                         attr = OrderedDict()
@@ -132,7 +137,7 @@ class wrapper:
                                     optional = is_optional(v)
                                     enum = get_enum_value(v)
                                     if isinstance(v, Tuple):
-                                        default_value = 'pair_type'+str(v.default_args[0])
+                                        default_value = 'pair_type' + str(v.default_args[0])
                                     if isinstance(v, List):
                                         if v._trait:
                                             if v._trait.__class__.__name__ == 'Instance':
@@ -150,7 +155,7 @@ class wrapper:
                         self.file2wrap[filename] = self.file2wrap.get(filename, []) + [{d: {'attr': attr,
                                                          'view_name': component._view_name.default_value,
                                                          'model_name': component._model_name.default_value, 
-                                                         'base': [get_class_info(base) for base in component.__bases__]
+                                                         'base': [get_class_info(self.module, base) for base in component.__bases__]
                                                    }}]
 
     def build_output(self, traits2lang):
@@ -159,9 +164,7 @@ class wrapper:
         for filename, classes in self.file2wrap.items():
             for cl in classes:
                 for classname in cl.keys():
-                    class2file[classname] = filename
-
-        print(class2file)
+                    class2file[classname] = filename.split('/')[-1]
 
         for filename, classes in self.file2wrap.items():
             klass = {}
@@ -174,34 +177,36 @@ class wrapper:
                     for varname, vardata in classdata['attr'].items():
                         unknown = False
                         if isinstance(vardata[0], tuple):
-                            container = get_trait(vardata[0][0], traits2lang)
+                            container = get_trait(vardata[0][0], traits2lang, class2file)
                             if container is None:
                                 print("unknown container type for {} in class {}".format(varname, classname))
                                 unknown = True
-                            element = get_trait(vardata[0][1], traits2lang)
+                            element = get_trait(vardata[0][1], traits2lang, class2file)
                             if element is None:
                                 print("unknown element type for the container {} in class {}".format(varname, classname))
                                 unknown = True
                             cpptype = container + '<' + element + '>'
 
                             for v in vardata[0]:
-                                dep = get_dep(v, traits2lang)
-                                if dep:
+                                dep = get_dep(v, traits2lang, class2file)
+                                if dep and dep != filename +'.hpp':
                                     dependencies.update({dep}) 
 
                                 to_add = get_using(v, traits2lang)
                                 if to_add and to_add not in using:
                                     using.append(to_add)
                         else:
-                            cpptype = get_trait(vardata[0], traits2lang)
+                            cpptype = get_trait(vardata[0], traits2lang, class2file)
                             if cpptype is None:
                                 print("unknown type for {} in class {}".format(varname, classname))
                                 unknown = True
-                            dep = get_dep(vardata[0], traits2lang)
-                            if dep:
+
+                            dep = get_dep(vardata[0], traits2lang, class2file)
+                            if dep and dep != filename + '.hpp':
                                 dependencies.update({dep})
 
                             to_add = get_using(vardata[0], traits2lang)
+
                             if to_add and to_add not in using:
                                 using.append(to_add)
                         if vardata[3]:
@@ -216,7 +221,6 @@ class wrapper:
                     tmp['model_name'] = classdata['model_name']
                     for i in classdata['base']:
                         if i['classname'] in class2file.keys():
-                            dependencies.update({class2file[i['classname']]})
                             tmp['inheritance'] = [python2cpp_classname(i['classname'], 'x')]
                         else:
                             dependencies.update({i['filename']})
@@ -240,7 +244,8 @@ class wrapper:
 
         for r in self.output:
             filename, dependencies, class2wrap = r
-            output_file = path + '/' + filename + prefix
+            output_file = path + '/' + self.module + '/' + filename + prefix
+            print(self.module,  output_file)
             dirname = os.path.dirname(os.path.abspath(output_file))
 
             if not os.path.exists(dirname):
@@ -268,10 +273,10 @@ class wrapper:
             with open(output_file, mode='w') as f:
                 f.write(template.render(namespace=self.namespace, 
                                         package_name=self.package_name.upper(),
-                                        filename=filename.split('/')[1].upper(),
+                                        filename=filename.upper(),
                                         dependencies=dependencies, 
                                         klass=klass))
 
-#w = wrapper('pythreejs', 'xthree', 'xthree')
-w = wrapper('bqplot', 'xpl', 'xplot')
+w = wrapper('pythreejs', 'xthree', 'xthree')
+#w = wrapper('bqplot', 'xpl', 'xplot')
 w.build_files('cpp.tmpl')
