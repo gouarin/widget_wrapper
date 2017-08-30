@@ -56,11 +56,6 @@ traits2cpp = {
  #'ValidateHandler',
  # bqplot type
  'Color': {'type': 'color_type', 'using': 'std::string'},
- 'Axis': 'xw::xholder<xaxis>',
- 'Mark': 'xw::xholder<xmark>',
- 'Scale': {'type': 'scales_type', 'using': 'xw::xholder<xscale>'},
- # pythreejs type
- 'Controls': 'controls',
 }
 
 classLink = {
