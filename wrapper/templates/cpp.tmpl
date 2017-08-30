@@ -1,20 +1,115 @@
-#pragma once
+{%- macro header_comment(name, type='') %}
+    /
+    {%- for n in range(name|length+type|length+5) -%}
+    *
+    {%- endfor %}
+    * {{ name }} {{ type }} *
+    *
+    {%- for n in range(name|length+type|length+4) -%}
+    *
+    {%- endfor -%}
+    /
+{% endmacro -%}
+
+{%- macro license() -%}
+/***************************************************************************
+* Copyright (c) 2017, Sylvain Corlay, Johan Mabille and Loic Gouarin       *
+*                                                                          *
+* Distributed under the terms of the BSD 3-Clause License.                 *
+*                                                                          *
+* The full license is in the file LICENSE, distributed with this software. *
+****************************************************************************/
+{%- endmacro -%}
+
+{{ license() }}
+#ifndef {{ package_name }}_{{ filename }}_HPP
+#define {{ package_name }}_{{ filename }}_HPP
 {% for item in dependencies -%}
 #include <{{ item }}>
-{% endfor -%}
+{% endfor %}
 
-{% for key, value in klass.items() %}
-struct {{ key }}
-{%- if value.inheritance -%}
-: public {{ value.inheritance|join(', ') }}
-{% endif -%} 
+namespace {{ namespace }}
 {
-    {% for attr in value.attr -%}
-    XPROPERTY({{ attr.type }}, {{ attr.name }}, {{ key }}); 
-    {% endfor %}
-};
-{% for attr in value.attr -%}
-{{ key }}.{{ attr.name }} = {{attr.default_value | safe }}; 
-{% endfor %}
+    {% for key, value in klass.items() %}
+    {{ header_comment(key, 'declaration') }}
+    template<class D>
+    class {{ key }}
+    {%- if value.inheritance -%}
+        : public {{ value.inheritance[0] }}<D>
+    {%- endif %} 
+    {
+    public:
+        using base_type = {{ value.inheritance[0] }}<D>;
+        using derived_type = D;
 
-{% endfor %}
+        {%- for u in value.using %}
+        using {{ u|safe }};
+        {% endfor %}
+        
+        {{ key }}();
+        xeus::xjson get_state() const;
+        void apply_patch(const xeus::xjson& patch);
+
+        {%- for attr in value.attr -%}
+
+            {%- if attr.optional -%}
+                {% set type = ['XOPTIONAL(', attr.type, ')']|join() %}
+            {%- else -%}
+                {% set type = attr.type %}
+            {%- endif -%}
+
+            {%- if attr.default_value %}
+        {{ attr.comment }}XPROPERTY({{ type|safe }}, derived_type, {{ attr.name }}, {{ attr.default_value|safe }});
+            {%- else %}
+        {{ attr.comment }}XPROPERTY({{ type|safe }}, derived_type, {{ attr.name }});
+            {%- endif -%} 
+        
+        {%- endfor %}
+
+    private:
+        void set_defaults();
+    };
+
+    using {{ key[1:] }} = xw::xmaterialize<{{ key }}>;
+    {% endfor %}
+
+    {% for key, value in klass.items() %}
+    {{ header_comment(key, 'implementation') }}
+    template <class D>
+    inline {{ key }}<D>::{{ key }}()
+        : base_type()
+    {
+        set_defaults();
+    }
+
+    template <class D>
+    inline void {{ key }}<D>::apply_patch(const xeus::xjson& patch)
+    {
+        base_type::apply_patch(patch);
+
+        {%- for attr in value.attr %}
+        {{ attr.comment }}XOBJECT_SET_PROPERTY_FROM_PATCH({{ attr.name }}, patch);
+        {%- endfor %}
+    }
+
+    template <class D>
+    inline xeus::xjson {{ key }}<D>::get_state() const
+    {
+        xeus::xjson state = base_type::get_state();
+
+        {%- for attr in value.attr %}
+        {{ attr.comment }}XOBJECT_SET_PATCH_FROM_PROPERTY({{ attr.name }}, state);
+        {%- endfor %}
+
+        return state;
+    }
+
+    template <class D>
+    inline void {{ key }}<D>::set_defaults()
+    {
+        this->_view_name() = "{{ value.view_name }}";
+        this->_model_name() = "{{ value.model_name }}";
+    }
+    {% endfor %}
+}
+#endif

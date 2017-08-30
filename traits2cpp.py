@@ -1,8 +1,7 @@
-cppstring = ('std::string', 'string')
-
 traits2cpp = {
  #'All',
  #'Any',
+ 'Array': {'type': 'data_type', 'using': 'xboxed_container<std::vector<double>>'},
  #'BaseDescriptor',
  'Bool': 'bool',
  #'Bunch',
@@ -14,14 +13,14 @@ traits2cpp = {
  'CInt': 'int',
  'CLong': 'std::size_t',
  #'CRegExp',
- 'CUnicode': cppstring,
+ #'CUnicode': cppstring,
  #'CaselessStrEnum',
  #'ClassBasedTraitType',
  #'ClassTypes',
  'Complex': 'std::complex',
  #'Container',
  #'DefaultHandler',
- 'Dict': 'std::map',
+ 'Dict': '::xeus::xjson',
  #'DottedObjectName',
  'Enum': 'enum',
  #'EventHandler',
@@ -34,7 +33,7 @@ traits2cpp = {
  #'Instance',
  'Int': 'int',
  'Integer': 'int',
- 'List': ('std::list', 'list'),
+ 'List': {'type': 'std::vector', 'include': 'vector'},
  'Long': 'std::size_t',
  #'MetaHasDescriptors',
  #'MetaHasTraits',
@@ -48,11 +47,23 @@ traits2cpp = {
  #'This',
  #'TraitError',
  #'TraitType',
- 'Tuple': 'std::tuple',
+ 'Tuple': {'type':'pair_type', 'using': 'std::pair<double, double>'},
  #'Type',
  #'Undefined',
- 'Unicode': cppstring,
+ 'Unicode': {'type': 'std::string', 'include': 'string'},
  'Union': 'union',
  #'UseEnum',
  #'ValidateHandler',
+ # bqplot type
+ 'Color': {'type': 'color_type', 'using': 'std::string'},
+ 'Axis': 'xw::xholder<xaxis>',
+ 'Mark': 'xw::xholder<xmark>',
+ 'Scale': {'type': 'scales_type', 'using': 'xw::xholder<xscale>'},
+ # pythreejs type
+ 'Controls': 'controls',
+}
+
+classLink = {
+    "Widget": {'filename': "xplot.hpp", 'classname': "xplot"},
+    "DOMWidget": {'filename': "xwidgets/xwidget.hpp", 'classname': "xw::xwidget"}, 
 }
